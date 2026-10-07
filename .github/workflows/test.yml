@@ -1,0 +1,84 @@
+name: testy
+
+# Pull request i push do main. Bez ograniczenia gałęzi każdy push odpalał
+# testy dwa razy: raz ze zdarzenia push, raz z pull_request — ten sam kod,
+# podwójny koszt i dwa razy więcej miejsc, w których coś może zawisnąć.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Testy jednostkowe (Node 20)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  sekrety:
+    name: Skanowanie sekretów (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Przy zdarzeniu pull_request akcja pyta API o listę commitów w PR,
+    # a domyślny token tego nie może. Bez tego zadanie wywala się na 403.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks skanuje całą historię, nie tylko ostatni commit
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  przegladarka:
+    name: Testy przeglądarkowe (Playwright)
+    runs-on: ubuntu-latest
+    # Pobieranie przeglądarki potrafi zawisnąć bez końca. Limit sprawia, że
+    # zadanie pada po kwadransie zamiast blokować scalanie w nieskończoność.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Wersja Playwrighta jest częścią klucza: przy jej zmianie cache się
+      # unieważnia sam, bo przeglądarka jest przypisana do wersji biblioteki.
+      - name: Ustal wersję Playwrighta
+        id: pw
+        run: echo "wersja=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache przeglądarek Playwrighta
+        id: cache-pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.wersja }}
+
+      # Przy trafieniu w cache dociągamy same zależności systemowe — one nie
+      # leżą w katalogu domowym, więc cache ich nie obejmuje.
+      - name: Zainstaluj przeglądarkę
+        run: npx playwright install --with-deps chromium
+        if: steps.cache-pw.outputs.cache-hit != 'true'
+      - name: Zależności systemowe przeglądarki
+        run: npx playwright install-deps chromium
+        if: steps.cache-pw.outputs.cache-hit == 'true'
+
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: slad-playwright
+          path: playwright-report/
+          retention-days: 7

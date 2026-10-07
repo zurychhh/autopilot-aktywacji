@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Brief dla operatora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="/styl-mapa.css">
+<style>
+.wrap{max-width:720px}
+.liczby{display:flex;gap:10px;flex-wrap:wrap}
+.kafel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px;flex:1;min-width:140px}
+.kafel b{display:block;font-size:1.6rem;line-height:1.1}
+.kafel span{font-size:.78rem;color:var(--muted)}
+.kafel .zmiana{font-size:.82rem;font-weight:500}
+.zmiana.plus{color:var(--ok)} .zmiana.minus{color:var(--bad)}
+.lejek{display:grid;gap:6px;margin-top:6px}
+.krok{display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:center;font-size:.88rem}
+.pasek{height:9px;border-radius:999px;background:var(--brand-50);overflow:hidden}
+.pasek i{display:block;height:100%;background:var(--brand)}
+pre{white-space:pre-wrap;background:var(--brand-50);border-radius:14px;padding:14px;font-size:.86rem;line-height:1.5}
+.operatorzy{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.operatorzy a{padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);
+  color:var(--brand-deep);text-decoration:none;font-size:.86rem}
+.operatorzy a[aria-current]{background:var(--brand);border-color:var(--brand);color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="brandline">Bezpieczna Rodzina · brief dla partnera</p>
+    <h1 id="tytul">Wczytywanie…</h1>
+    <p class="muted" id="okres"></p>
+  </div>
+
+  <div class="operatorzy" id="operatorzy"></div>
+  <div class="liczby" id="liczby"></div>
+
+  <div class="card">
+    <h2>Tydzień w liczbach</h2>
+    <div class="lejek" id="lejek"></div>
+  </div>
+
+  <div class="card" id="rekBox">
+    <h2 id="rekTytul"></h2>
+    <p id="rekOpis" class="muted"></p>
+    <p class="small" id="rekLiczby"></p>
+  </div>
+
+  <div class="card">
+    <h2>Brief do wysłania</h2>
+    <p class="small muted">Wersja poniżej jest gotowa i powstała bez AI. Przycisk dokłada akapit otwierający, pisany przez Claude wyłącznie z liczb policzonych przez kod.</p>
+    <div class="akcje">
+      <button type="button" class="primary" id="btnAI">Dopisz akapit otwierający</button>
+      <button type="button" id="btnKopiuj">Skopiuj do maila</button>
+    </div>
+    <p class="small muted" id="stanAI"></p>
+    <pre id="mail">—</pre>
+  </div>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Dwie różne rzeczy, które łatwo pomylić: udział klientów a różnica udziałów
+const udzial = (x, d = 1) => `${(x * 100).toLocaleString('pl-PL', {minimumFractionDigits: d, maximumFractionDigits: d})}%`;
+const pktProc = (x, d = 1) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toLocaleString('pl-PL', {minimumFractionDigits: d, maximumFractionDigits: d})} pkt proc.`;
+const liczba = (n) => Math.round(n).toLocaleString('pl-PL');
+const NAZWA = decodeURIComponent((location.pathname.match(/\/operator\/([^/]+)/) || [])[1] || 'Play');
+const NAZWY = {start:'Aktywna subskrypcja', pobranie:'Pobranie aplikacji', konto:'Założenie konta',
+  bliski:'Dodanie bliskiej osoby', mapa:'Pierwsza lokalizacja', d7:'Aktywność w 7. dniu', d30:'Aktywność w 30. dniu'};
+
+let dane = null;
+
+(async () => {
+  try{
+    const r = await fetch(`/api/operator?nazwa=${encodeURIComponent(NAZWA)}`, {cache:'no-store'});
+    dane = await r.json();
+    if(dane.blad){
+      $('tytul').textContent = dane.blad;
+      $('operatorzy').innerHTML = (dane.dostepni || []).map(o => `<a href="/operator/${encodeURIComponent(o)}">${esc(o)}</a>`).join('');
+      return;
+    }
+    render();
+  }catch(e){
+    $('tytul').textContent = 'Nie udało się wczytać briefu';
+    $('okres').textContent = `${e.message} Ten widok potrzebuje funkcji serwerowych.`;
+  }
+})();
+
+function render(){
+  const {stan, rekomendacja: rek, mail} = dane;
+  $('tytul').textContent = `Aktywacja wspólnych klientów — ${stan.operator}`;
+  $('okres').innerHTML = `Tydzień ${stan.okres.od} do ${stan.okres.do}. Wszystkie liczby są przykładowe. <b>%</b> to udział klientów, <b>pkt proc.</b> to różnica między dwoma udziałami.`;
+
+  const zm = stan.zmianaPktProc;
+  $('liczby').innerHTML = `
+    <div class="kafel"><b>${liczba(stan.kroki.start)}</b><span>aktywnych subskrypcji</span></div>
+    <div class="kafel"><b>${liczba(stan.kroki.mapa)}</b><span>doszło do pierwszej wartości</span></div>
+    <div class="kafel"><b>${udzial(stan.doPierwszejWartosci)}</b><span>udział klientów</span>
+      <span class="zmiana ${zm >= 0 ? 'plus' : 'minus'}">${pktProc(zm)} tydzień do tygodnia</span></div>
+    ${stan.najlepszyInny ? `<div class="kafel"><b>${udzial(stan.udzialNajlepszego)}</b><span>najlepszy inny kanał operatorski (${esc(stan.najlepszyInny)})</span></div>` : ''}`;
+
+  const start = stan.kroki.start || 1;
+  $('lejek').innerHTML = Object.entries(NAZWY).map(([k, nazwa]) => `
+    <div class="krok"><span>${nazwa}</span>
+      <span class="pasek"><i style="width:${(stan.kroki[k] / start * 100).toFixed(1)}%"></i></span>
+      <span>${liczba(stan.kroki[k])}</span></div>`).join('');
+
+  $('rekTytul').textContent = rek.tytul;
+  $('rekOpis').textContent = rek.opis;
+  $('rekLiczby').innerHTML = rek.osobTygodniowo
+    ? `Różnica względem <b>${esc(rek.wzgledem)}</b> na tym kroku: <b>${pktProc(rek.roznicaPktProc / 100)}</b>, czyli około <b>${liczba(rek.osobTygodniowo)} osób tygodniowo</b>. To rząd wielkości, nie obietnica.`
+    : '';
+  $('mail').textContent = mail;
+}
+
+$('btnAI').addEventListener('click', async () => {
+  const b = $('btnAI'); b.disabled = true;
+  $('stanAI').textContent = 'Claude pisze brief z wyliczonych liczb…';
+  try{
+    const r = await fetch('/api/operator', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({nazwa: NAZWA})
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.blad || `funkcja odpowiedziała ${r.status}`);
+    $('mail').textContent = d.mail;
+    $('stanAI').textContent = 'Akapit napisany przez Claude. Liczby poniżej policzył kod i AI nie mogła ich zmienić.';
+  }catch(e){
+    $('stanAI').textContent = `${e.message} Brief poniżej jest kompletny bez AI.`;
+  }finally{ b.disabled = false; }
+});
+
+$('btnKopiuj').addEventListener('click', async () => {
+  try{
+    await navigator.clipboard.writeText($('mail').textContent);
+    $('btnKopiuj').textContent = 'Skopiowane';
+    setTimeout(() => { $('btnKopiuj').textContent = 'Skopiuj do maila'; }, 2000);
+  }catch(e){ $('stanAI').textContent = 'Schowek zablokowany — zaznacz tekst i skopiuj ręcznie.'; }
+});
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

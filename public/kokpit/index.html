@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Kokpit aktywacji</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="/styl-mapa.css">
+<style>
+.wrap{max-width:880px}
+.naglowek{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.liczby{display:flex;gap:10px;flex-wrap:wrap}
+.kafel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;min-width:110px}
+.kafel b{display:block;font-size:1.5rem;line-height:1.1}
+.kafel span{font-size:.78rem;color:var(--muted)}
+.znalezisko{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:18px;display:grid;gap:10px}
+.znalezisko.mocny{border-color:var(--brand)}
+.znalezisko .tytul{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.znalezisko h3{margin:0;font-size:1.05rem}
+.zmiana{font-variant-numeric:tabular-nums;font-weight:700}
+.zmiana.wzrost{color:var(--ok)} .zmiana.spadek{color:var(--bad)}
+.dowody{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.dowod{border-left:3px solid var(--line);padding:4px 0 4px 12px;font-size:.9rem}
+.dowod.poziom3{border-color:var(--ok)} .dowod.poziom2{border-color:var(--brand)} .dowod.poziom1{border-color:var(--line-strong,#d4d4dc)}
+.dowod b{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.zewnetrzne{background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:10px 14px;font-size:.88rem}
+.iskra{display:block;width:100%;height:46px}
+select{font:inherit;padding:9px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="naglowek">
+    <div>
+      <p class="brandline">Bezpieczna Rodzina · Autopilot</p>
+      <h1>Kokpit aktywacji</h1>
+    </div>
+    <label class="small muted" for="metryka">Metryka
+      <select id="metryka">
+        <option value="pobranie">Pobranie aplikacji</option>
+        <option value="start">Aktywne subskrypcje</option>
+        <option value="konto">Założenie konta</option>
+        <option value="mapa">Pierwsza lokalizacja</option>
+        <option value="d30">Aktywność w 30. dniu</option>
+      </select>
+    </label>
+  </div>
+
+  <p class="muted">Co się zmieniło, dlaczego i jak mocny jest dowód. Zmiany wykrywa kod wobec 28-dniowej bazy, na medianie i odchyleniu medianowym — statystykach, których nie psuje jeden tydzień skoku. Najpierw sprawdzamy kalendarz, dopiero potem szukamy przyczyny u siebie.</p>
+
+  <div class="liczby" id="liczby"></div>
+
+  <div class="card">
+    <h2>Podsumowanie dnia</h2>
+    <p id="podsumowanie" class="muted">Pełny raport poniżej liczy kod i działa zawsze. To podsumowanie pisze Claude z gotowych faktów.</p>
+    <div class="akcje"><button type="button" class="primary" id="btnAI">Napisz podsumowanie</button></div>
+    <p class="small muted" id="stanAI"></p>
+  </div>
+
+  <div id="znaleziska"></div>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct = x => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(0)}%`;
+let raport = null;
+
+async function wczytaj(){
+  const metryka = $('metryka').value;
+  $('znaleziska').innerHTML = '<p class="muted">Liczę…</p>';
+  try{
+    const r = await fetch(`/api/kokpit?metryka=${metryka}`, {cache:'no-store'});
+    if(!r.ok) throw new Error(`funkcja odpowiedziała ${r.status}`);
+    raport = await r.json();
+    render();
+  }catch(e){
+    $('znaleziska').innerHTML = `<p class="muted">Nie udało się wczytać raportu (${esc(e.message)}). Kokpit potrzebuje funkcji serwerowych.</p>`;
+  }
+}
+
+function iskra(punkty){
+  if(!punkty || punkty.length < 2) return '';
+  const w = 300, h = 46, max = Math.max(...punkty), min = Math.min(...punkty);
+  const zakres = max - min || 1;
+  const d = punkty.map((v, i) => `${(i / (punkty.length - 1) * w).toFixed(1)},${(h - (v - min) / zakres * (h - 4) - 2).toFixed(1)}`).join(' ');
+  return `<svg class="iskra" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".55"/></svg>`;
+}
+
+function render(){
+  const p = raport.podsumowanie;
+  $('liczby').innerHTML = [
+    [p.zmian, 'wykrytych zmian'],
+    [p.zMocnymDowodem, 'z mocnym dowodem'],
+    [p.zWyjasnieniemZewnetrznym, 'tłumaczy kalendarz'],
+    [raport.dni, 'dni danych']
+  ].map(([n, opis]) => `<div class="kafel"><b>${n}</b><span>${opis}</span></div>`).join('');
+
+  if(!raport.znaleziska.length){
+    $('znaleziska').innerHTML = '<div class="card"><p>Żadna zmiana nie przekroczyła progu istotności. To nie znaczy, że nic się nie dzieje — znaczy, że nic nie odstaje od tła.</p></div>';
+    return;
+  }
+
+  $('znaleziska').innerHTML = raport.znaleziska.map(z => {
+    const e = z.epizod, mocny = (z.najmocniejszy?.poziom || 0) >= 2;
+    return `<div class="znalezisko${mocny ? ' mocny' : ''}">
+      <div class="tytul">
+        <h3>${esc(z.jednostka.etykieta)}</h3>
+        <span class="zmiana ${e.kierunek}">${pct(e.zmianaProcent)}</span>
+      </div>
+      <p class="small muted">${esc(e.od)} → ${esc(e.do)} · ${e.rodzaj === 'przesuniecie' ? 'trwała zmiana poziomu' : 'chwilowy wyskok'} · z bazy ${Math.round(e.bazaSrednia)} na ${Math.round(e.sredniaWEpizodzie)} dziennie${z.potwierdzonyDrugimDetektorem ? ' · potwierdzone przez oba detektory' : ''}</p>
+      ${z.wyjasnienieZewnetrzne.length ? `<div class="zewnetrzne"><b>Najpierw kalendarz:</b> ${z.wyjasnienieZewnetrzne.map(k => esc(k.nazwa)).join(', ')}. Zanim poszukamy przyczyny u siebie.</div>` : ''}
+      ${z.kandydaci.length ? `<ul class="dowody">${z.kandydaci.map(k => `<li class="dowod poziom${k.poziom}"><b>${esc(k.nazwa)}</b>${esc(k.opis)}</li>`).join('')}</ul>`
+        : '<p class="small muted">Żadna nasza akcja ani test nie pasuje do tego okresu. Zmiana została, przyczyna nie.</p>'}
+      ${z.skalowanie ? `<p class="small"><b>Gdyby to przenieść na ${esc(z.skalowanie.jednostki.join(', '))}:</b> od ${z.skalowanie.miesiecznieOd} do ${z.skalowanie.miesiecznieDo} miesięcznie. ${esc(z.skalowanie.zastrzezenie)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+$('btnAI').addEventListener('click', async () => {
+  const b = $('btnAI'); b.disabled = true;
+  $('stanAI').textContent = 'Claude streszcza wyliczone fakty…';
+  try{
+    const r = await fetch('/api/kokpit', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({metryka: $('metryka').value})
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.blad || `funkcja odpowiedziała ${r.status}`);
+    $('podsumowanie').textContent = d.podsumowanie;
+    $('stanAI').textContent = d.bezAI ? '' : 'Napisane przez Claude wyłącznie z faktów policzonych przez kod.';
+  }catch(e){
+    $('stanAI').textContent = `${e.message} Raport poniżej policzył kod i jest kompletny bez AI.`;
+  }finally{ b.disabled = false; }
+});
+
+$('metryka').addEventListener('change', wczytaj);
+wczytaj();
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

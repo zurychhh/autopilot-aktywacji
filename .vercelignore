@@ -1,0 +1,6 @@
+# Na produkcji potrzebne są tylko public/ i api/
+test/
+tools/
+e2e/
+playwright.config.js
+.github/

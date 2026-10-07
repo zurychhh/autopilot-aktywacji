@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Prośba o lokalizację</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="/styl-mapa.css">
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="brandline">Bezpieczna Rodzina</p>
+    <h1 id="naglowek">Wczytywanie…</h1>
+  </div>
+
+  <div class="card" id="prosba" hidden>
+    <p id="opis"></p>
+    <p class="small muted">Jeśli się zgodzisz, Twoja lokalizacja zostanie pokazana <b>raz</b> i zniknie najpóźniej po godzinie. Nie zapisujemy Twojego numeru ani niczego poza samym punktem na mapie. Możesz odmówić — wtedy nie zostaje nic.</p>
+    <div class="akcje">
+      <button type="button" class="primary" id="btnZgoda">Udostępnij raz</button>
+      <button type="button" class="danger" id="btnOdmowa">Odmów</button>
+    </div>
+    <p class="small muted" id="stan"></p>
+  </div>
+
+  <div class="card" id="koniec" hidden>
+    <h2 id="koniecTytul"></h2>
+    <p id="koniecOpis" class="muted"></p>
+  </div>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const KOD = (location.pathname.match(/\/z\/([A-Z0-9]+)/) || [])[1] || '';
+
+async function wolaj(sciezka, dane){
+  const r = await fetch(sciezka, dane
+    ? {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(dane)}
+    : {cache:'no-store'});
+  let t = null;
+  try{ t = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error((t && t.blad) || `Funkcja odpowiedziała ${r.status}.`);
+  return t;
+}
+
+function koniec(tytul, opis){
+  $('prosba').hidden = true;
+  $('koniec').hidden = false;
+  $('naglowek').textContent = tytul;
+  $('koniecTytul').textContent = tytul;
+  $('koniecOpis').textContent = opis;
+}
+
+(async () => {
+  if(!KOD){ koniec('Nieprawidłowy link', 'W adresie brakuje kodu prośby.'); return; }
+  try{
+    const p = await wolaj(`/api/mapa?akcja=prosba&kod=${encodeURIComponent(KOD)}`);
+    if(p.stan === 'zgoda'){ koniec('Już udostępniono', 'Lokalizacja została pokazana. Zniknie najpóźniej po godzinie od utworzenia prośby.'); return; }
+    $('naglowek').textContent = `${p.odKogo} prosi o Twoją lokalizację`;
+    $('opis').innerHTML = `<b>${p.odKogo}</b> chce zobaczyć, gdzie jest <b>${p.imie}</b>, i prosi Cię o jednorazowe pokazanie lokalizacji.`;
+    $('prosba').hidden = false;
+  }catch(e){
+    koniec('Prośba wygasła', 'Ten link już nie działa. Prośby żyją godzinę, potem znikają razem z lokalizacją. Poproś o nowy link.');
+  }
+})();
+
+$('btnZgoda').addEventListener('click', () => {
+  const b = $('btnZgoda'); b.disabled = true; $('btnOdmowa').disabled = true;
+  $('stan').textContent = 'Pytam przeglądarkę o lokalizację…';
+
+  if(!navigator.geolocation){
+    $('stan').textContent = 'Ta przeglądarka nie udostępnia lokalizacji.';
+    b.disabled = false; $('btnOdmowa').disabled = false; return;
+  }
+
+  // Jedno pobranie, bez śledzenia. watchPosition celowo nie jest używane.
+  navigator.geolocation.getCurrentPosition(async (poz) => {
+    try{
+      await wolaj('/api/mapa?akcja=zgoda', {
+        kod: KOD,
+        lat: poz.coords.latitude,
+        lon: poz.coords.longitude,
+        dokladnosc: poz.coords.accuracy
+      });
+      koniec('Gotowe', 'Lokalizacja została pokazana raz. Zniknie najpóźniej po godzinie od utworzenia prośby.');
+    }catch(e){
+      $('stan').textContent = e.message;
+      b.disabled = false; $('btnOdmowa').disabled = false;
+    }
+  }, (err) => {
+    $('stan').textContent = err.code === err.PERMISSION_DENIED
+      ? 'Przeglądarka nie dała zgody na lokalizację. Nic nie zostało wysłane.'
+      : 'Nie udało się ustalić lokalizacji. Nic nie zostało wysłane.';
+    b.disabled = false; $('btnOdmowa').disabled = false;
+  }, {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
+});
+
+$('btnOdmowa').addEventListener('click', async () => {
+  $('btnZgoda').disabled = true; $('btnOdmowa').disabled = true;
+  try{ await wolaj('/api/mapa?akcja=odmowa', {kod: KOD}); }catch(e){}
+  koniec('Odmówiono', 'Nic nie zostało zapisane. Prośba została usunięta razem ze wszystkim, co się z nią wiązało.');
+});
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

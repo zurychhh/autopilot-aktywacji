@@ -1,0 +1,70 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "functions": {
+    "api/*.js": {
+      "includeFiles": "{api/prompts,data}/**"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "x-content-type-options",
+          "value": "nosniff"
+        },
+        {
+          "key": "referrer-policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "permissions-policy",
+          "value": "geolocation=(), camera=(), microphone=()"
+        },
+        {
+          "key": "x-robots-tag",
+          "value": "noindex, nofollow, noarchive, nosnippet"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "cache-control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/z/(.*)",
+      "headers": [
+        {
+          "key": "permissions-policy",
+          "value": "geolocation=(self), camera=(), microphone=()"
+        }
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron-raport",
+      "schedule": "0 7 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/z/:kod",
+      "destination": "/z/index.html"
+    },
+    {
+      "source": "/mapa/:kod",
+      "destination": "/mapa/podglad.html"
+    },
+    {
+      "source": "/operator/:nazwa",
+      "destination": "/operator/index.html"
+    }
+  ]
+}

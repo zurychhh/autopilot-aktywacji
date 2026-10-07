@@ -1,0 +1,6 @@
+data_od,data_do,rodzaj,nazwa,wplyw
+2026-09-01,2026-09-07,rok_szkolny,Początek roku szkolnego,wysoki
+2026-07-01,2026-08-31,wakacje,Wakacje letnie,sredni
+2026-09-16,2026-09-16,premiera_os,Premiera iOS,sredni
+2026-10-05,2026-10-05,premiera_os,Premiera Androida,sredni
+2026-10-31,2026-11-02,ferie,Dni wolne,niski
