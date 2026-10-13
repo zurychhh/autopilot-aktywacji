@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Rozpoznanie numeru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="/styl-mapa.css">
+<style>
+.wrap{max-width:640px}
+.makieta{background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:14px 16px;font-size:.9rem}
+.porownanie{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media (max-width:560px){.porownanie{grid-template-columns:1fr}}
+.kolumna{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.kolumna h3{margin:0 0 8px;font-size:.95rem}
+.kolumna ol{margin:0;padding-left:18px;font-size:.88rem;color:var(--ink-soft)}
+.kolumna li{margin-bottom:5px}
+.kolumna.lepsza{border-color:var(--brand);background:var(--brand-50)}
+pre{white-space:pre-wrap;background:var(--brand-50);border-radius:14px;padding:12px;font-size:.82rem}
+.wynik{font-weight:700;font-size:1.05rem}
+.wynik.tak{color:var(--ok)} .wynik.nie{color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="brandline">Bezpieczna Rodzina · krok „Założenie konta”</p>
+    <h1>Rozpoznanie numeru przez sieć</h1>
+  </div>
+
+  <div class="makieta">
+    <b>To makieta.</b> W produkcji wymaga umowy z operatorem: token wydaje jego sieć po rozpoznaniu karty SIM i nie da się tego obejść — na tym polega cały mechanizm. Odtworzona jest specyfikacja <b>CAMARA Number Verification</b>, łącznie z tokenem jednorazowym, limitem 300 sekund i kodami błędów.
+  </div>
+
+  <div class="card">
+    <h2>Co to zmienia w lejku</h2>
+    <p class="muted">Druga co do wielkości strata w kanale operatora siedzi między pobraniem aplikacji a założeniem konta. Klient ma przepisać numer i przepisać kod z SMS-a. Rozpoznanie przez sieć usuwa oba kroki.</p>
+    <div class="porownanie">
+      <div class="kolumna">
+        <h3>Dziś: formularz</h3>
+        <ol><li>Wpisz numer telefonu</li><li>Poczekaj na SMS</li><li>Przepisz kod</li><li>Ustaw hasło</li><li>Potwierdź e-mail</li></ol>
+      </div>
+      <div class="kolumna lepsza">
+        <h3>Z rozpoznaniem numeru</h3>
+        <ol><li>Kliknij „Zaloguj przez sieć”</li><li>Gotowe</li></ol>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Spróbuj</h2>
+    <p class="small muted">Po lewej numer, który makieta uznaje za „w telefonie” (w produkcji wie to sieć z karty SIM). Po prawej numer, który podaje aplikacja. Zgodność sprawdza punkt <code>/verify</code>, który zwraca wyłącznie prawda albo fałsz — nigdy samego numeru.</p>
+    <label for="wSim">Numer w karcie SIM (zna go tylko sieć)</label>
+    <input type="text" id="wSim" value="+48600123456" autocomplete="off">
+    <label for="wApp" style="margin-top:12px">Numer, który sprawdza aplikacja</label>
+    <input type="text" id="wApp" value="+48600123456" autocomplete="off">
+    <div class="akcje">
+      <button type="button" class="primary" id="btnVerify">Sprawdź zgodność</button>
+      <button type="button" id="btnNumer">Poproś o sam numer</button>
+    </div>
+    <p id="wynik" class="wynik"></p>
+    <pre id="odpowiedz">—</pre>
+  </div>
+
+  <div class="card">
+    <h2>Czego makieta nie udaje</h2>
+    <p class="muted small">Nie łączy się z żadną siecią i nie wie nic o prawdziwych kartach SIM. Odtwarza kształt żądań, odpowiedzi i reguły bezpieczeństwa — po to, żeby wiedzieć, co dokładnie trzeba będzie podpisać i zintegrować, zanim ktokolwiek wyda na to pieniądze. Specyfikacja: <a href="https://github.com/camaraproject/NumberVerification">camaraproject/NumberVerification</a>.</p>
+  </div>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+
+async function wolaj(akcja, dane){
+  const r = await fetch(`/api/rozpoznanie?akcja=${akcja}`, {
+    method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(dane)
+  });
+  const t = await r.json();
+  return { ok: r.ok, dane: t };
+}
+
+async function token(){
+  const w = await wolaj('token', {numerWTelefonie: $('wSim').value.trim()});
+  if(!w.ok) throw new Error(`${w.dane.code}: ${w.dane.message}`);
+  return w.dane.access_token;
+}
+
+$('btnVerify').addEventListener('click', async () => {
+  const b = $('btnVerify'); b.disabled = true;
+  $('wynik').textContent = ''; $('odpowiedz').textContent = 'Uwierzytelnianie w sieci…';
+  try{
+    const t = await token();
+    const w = await wolaj('verify', {token: t, phoneNumber: $('wApp').value.trim()});
+    if(!w.ok) throw new Error(`${w.dane.code}: ${w.dane.message}`);
+    const zgodny = w.dane.devicePhoneNumberVerified;
+    $('wynik').textContent = zgodny ? 'Numer zgodny — konto można założyć bez formularza' : 'Numer niezgodny — potrzebna zwykła ścieżka';
+    $('wynik').className = 'wynik ' + (zgodny ? 'tak' : 'nie');
+    $('odpowiedz').textContent = `POST /verify\n${JSON.stringify(w.dane, null, 2)}`;
+  }catch(e){
+    $('wynik').textContent = ''; $('odpowiedz').textContent = e.message;
+  }finally{ b.disabled = false; }
+});
+
+$('btnNumer').addEventListener('click', async () => {
+  const b = $('btnNumer'); b.disabled = true;
+  $('wynik').textContent = '';
+  try{
+    const t = await token();
+    const bez = await wolaj('numer', {token: t, zgoda: false});
+    const ze = await wolaj('numer', {token: t, zgoda: true});
+    $('odpowiedz').textContent =
+      `GET /device-phone-number bez osobnej zgody\n${JSON.stringify(bez.dane, null, 2)}\n\n` +
+      `z osobną zgodą\n${JSON.stringify(ze.dane, null, 2)}\n\n` +
+      'Zwrócenie numeru to udostępnienie danych, a nie potwierdzenie czegoś, co aplikacja już wie — dlatego osobny zakres zgody.';
+  }catch(e){
+    $('odpowiedz').textContent = e.message;
+  }finally{ b.disabled = false; }
+});
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Mapa bliskiej osoby</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/styl-mapa.css">
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="brandline">Bezpieczna Rodzina</p>
+    <h1 id="naglowek">Czekam na zgodę…</h1>
+    <p class="muted" id="podtytul">Gdy bliska osoba kliknie „Udostępnij raz”, punkt pojawi się na mapie.</p>
+  </div>
+
+  <div id="map" role="img" aria-label="Mapa z lokalizacją bliskiej osoby"></div>
+  <p class="small muted" id="czas"></p>
+
+  <div class="card" id="dalej" hidden>
+    <h2>Chcesz wiedzieć, gdy dotrze na miejsce?</h2>
+    <p class="muted">Ustaw strefę — dom, szkoła, praca — a dostaniesz powiadomienie, gdy ktoś do niej dotrze albo z niej wyjdzie. To wymaga już aplikacji.</p>
+    <div class="akcje">
+      <button type="button" class="primary">Ustaw strefę w aplikacji</button>
+      <button type="button">Jak to działa?</button>
+    </div>
+    <p class="small muted">Przyciski są makietą — prototyp nie prowadzi do sklepu z aplikacjami.</p>
+  </div>
+
+  <div class="demo" id="demo" hidden></div>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+const $ = id => document.getElementById(id);
+const KOD = (location.pathname.match(/\/mapa\/([A-Z0-9]+)/) || [])[1] || '';
+
+// Punkt startowy mapy: środek Polski, dopóki nie ma zgody
+const mapa = L.map('map', {attributionControl: true}).setView([52.07, 19.48], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(mapa);
+
+let znacznik = null;
+let pytaj = true;
+
+async function sprawdz(){
+  try{
+    const r = await fetch(`/api/mapa?akcja=lokalizacja&kod=${encodeURIComponent(KOD)}`, {cache:'no-store'});
+    const w = await r.json();
+
+    if(!w.trwaly && $('demo').hidden){
+      $('demo').hidden = false;
+      $('demo').innerHTML = '<b>Tryb demo.</b> Stan trzymamy w pamięci jednej instancji funkcji serwerowej, bo nie jest podpięta baza. Prośba może zniknąć wcześniej niż po godzinie.';
+    }
+
+    if(w.stan === 'brak_lub_wygasla'){
+      pytaj = false;
+      $('naglowek').textContent = 'Prośba wygasła';
+      $('podtytul').textContent = 'Link żył godzinę i został usunięty razem z lokalizacją. Przygotuj nową prośbę.';
+      return;
+    }
+
+    if(w.stan === 'zgoda' && w.lokalizacja){
+      pytaj = false;
+      const {lat, lon, dokladnosc, czas} = w.lokalizacja;
+      $('naglowek').textContent = `${w.imie} jest tutaj`;
+      $('podtytul').textContent = dokladnosc
+        ? `Dokładność około ${Math.round(dokladnosc)} m.`
+        : 'Lokalizacja udostępniona jednorazowo.';
+      $('czas').textContent = `Udostępniono ${new Date(czas).toLocaleTimeString('pl-PL')}. Punkt zniknie najpóźniej o ${new Date(w.wygasa).toLocaleTimeString('pl-PL')}.`;
+      $('dalej').hidden = false;
+
+      mapa.setView([lat, lon], 15);
+      if(znacznik) znacznik.remove();
+      znacznik = L.marker([lat, lon]).addTo(mapa).bindPopup(w.imie).openPopup();
+      if(dokladnosc) L.circle([lat, lon], {radius: dokladnosc, color: '#0606e3', weight: 1, fillOpacity: .08}).addTo(mapa);
+    }
+  }catch(e){
+    $('podtytul').textContent = 'Nie udało się sprawdzić stanu prośby. Spróbuję ponownie.';
+  }
+}
+
+if(!KOD){
+  $('naglowek').textContent = 'Nieprawidłowy link';
+  $('podtytul').textContent = 'W adresie brakuje kodu prośby.';
+}else{
+  sprawdz();
+  setInterval(() => { if(pytaj) sprawdz(); }, 4000);
+}
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

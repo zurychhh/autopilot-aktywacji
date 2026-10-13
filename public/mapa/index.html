@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Zobacz bliską osobę na mapie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="/styl-mapa.css">
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <p class="brandline">Bezpieczna Rodzina</p>
+    <h1>Zobacz bliską osobę na mapie</h1>
+    <p class="muted">Bez instalowania aplikacji. Wyślesz prośbę, a bliska osoba zdecyduje, czy pokazać swoją lokalizację — raz, na jedną godzinę.</p>
+  </div>
+
+  <div class="card" id="formularz">
+    <label for="imie">Kogo chcesz zobaczyć?</label>
+    <input type="text" id="imie" placeholder="np. Zosia" autocomplete="off" maxlength="40">
+    <label for="odKogo" style="margin-top:14px">Jak ma Cię rozpoznać?</label>
+    <input type="text" id="odKogo" placeholder="np. Mama" autocomplete="off" maxlength="40">
+    <div class="akcje">
+      <button type="button" class="primary" id="btnUtworz">Przygotuj prośbę</button>
+    </div>
+    <p class="small muted" id="stan"></p>
+  </div>
+
+  <div class="card" id="gotowe" hidden>
+    <h2>Wyślij ten link bliskiej osobie</h2>
+    <p class="kod" id="link"></p>
+    <div class="akcje">
+      <button type="button" class="primary" id="btnKopiuj">Skopiuj link</button>
+      <button type="button" id="btnPodglad">Otwórz podgląd mapy</button>
+    </div>
+    <p class="small muted" id="waznosc"></p>
+  </div>
+
+  <div class="demo" id="demo" hidden></div>
+
+  <div class="card" id="zapros">
+    <h2>Zaproś bliskiego na stałe</h2>
+    <p class="muted small">Jednorazowa prośba pokazuje lokalizację raz. Zaproszenie jest po to, żeby bliska osoba dołączyła na dobre — wtedy działają strefy i powiadomienia.</p>
+    <div class="akcje" id="kanaly">
+      <button type="button" class="primary" id="btnShare" hidden>Udostępnij</button>
+      <button type="button" id="btnWhatsapp">WhatsApp</button>
+      <button type="button" id="btnMessenger">Messenger</button>
+      <button type="button" id="btnKopiujZapro">Skopiuj link</button>
+    </div>
+    <p class="small muted" id="stanZapro"></p>
+  </div>
+
+  <details id="logBox">
+    <summary>Przypomnienia po 48 godzinach (log)</summary>
+    <div class="in" style="padding-top:10px">
+      <p class="small muted">Zaproszenie bez akceptacji po 48 godzinach dostaje jedno przypomnienie — drugie byłoby nękaniem. Kampanię przygotowuje klient User.com w trybie <b>DRY_RUN</b>, więc nic nie wychodzi; poniżej widać, co by poszło.</p>
+      <pre id="logPrzypomnien" style="white-space:pre-wrap;font-size:.84rem">Wczytywanie…</pre>
+    </div>
+  </details>
+
+  <footer class="stopka"></footer>
+</div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+
+async function wolaj(sciezka, dane){
+  const r = await fetch(sciezka, dane
+    ? {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(dane)}
+    : {cache:'no-store'});
+  let t = null;
+  try{ t = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error((t && t.blad) || `Funkcja odpowiedziała ${r.status}.`);
+  return t;
+}
+
+function pokazTrybDemo(trwaly){
+  if(trwaly) return;
+  $('demo').hidden = false;
+  $('demo').innerHTML = '<b>Tryb demo.</b> Stan prośby trzymamy w pamięci jednej instancji funkcji serwerowej, ' +
+    'bo nie jest podpięta baza. Link zwykle działa, ale może przestać wcześniej niż po godzinie — to nie awaria, ' +
+    'tylko granica trybu demo.';
+}
+
+$('btnUtworz').addEventListener('click', async () => {
+  const b = $('btnUtworz'); b.disabled = true;
+  $('stan').textContent = 'Przygotowuję prośbę…';
+  try{
+    const w = await wolaj('/api/mapa?akcja=utworz', {imie: $('imie').value, odKogo: $('odKogo').value});
+    const link = `${location.origin}/z/${w.kod}`;
+    $('link').textContent = link;
+    $('btnPodglad').dataset.kod = w.kod;
+    $('gotowe').hidden = false;
+    $('formularz').hidden = true;
+    $('waznosc').textContent = `Link działa przez godzinę. Po tym czasie znika razem z lokalizacją, nawet jeśli bliska osoba ją udostępni.`;
+    $('stan').textContent = '';
+    pokazTrybDemo(w.trwaly);
+  }catch(e){
+    $('stan').textContent = e.message;
+  }finally{ b.disabled = false; }
+});
+
+$('btnKopiuj').addEventListener('click', async () => {
+  try{
+    await navigator.clipboard.writeText($('link').textContent);
+    $('btnKopiuj').textContent = 'Skopiowane';
+    setTimeout(() => { $('btnKopiuj').textContent = 'Skopiuj link'; }, 2000);
+  }catch(e){
+    // Schowek bywa zablokowany; zaznaczenie tekstu działa zawsze
+    const r = document.createRange(); r.selectNodeContents($('link'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $('btnKopiuj').textContent = 'Zaznaczone — skopiuj ręcznie';
+  }
+});
+
+$('btnPodglad').addEventListener('click', () => {
+  location.href = `/mapa/${$('btnPodglad').dataset.kod}`;
+});
+
+$('imie').addEventListener('keydown', e => { if(e.key === 'Enter') $('btnUtworz').click(); });
+
+// ---------- ZAPROSZENIE NA STAŁE ----------
+const TEKST_ZAPROSZENIA = (imie) =>
+  `Cześć! Dodaję Cię do Bezpiecznej Rodziny, żebyśmy mogli się nawzajem widzieć na mapie — tylko za zgodą, zawsze możesz odmówić. ${location.origin}/mapa`;
+
+function imieDoZaproszenia(){
+  return ($('imie').value || '').trim() || 'bliska osoba';
+}
+
+async function zarejestrujZaproszenie(kanal){
+  try{
+    await wolaj('/api/mapa?akcja=zapros', {imie: imieDoZaproszenia(), kanal});
+    $('stanZapro').textContent = 'Zaproszenie zapisane. Jeśli nikt go nie otworzy przez 48 godzin, przygotujemy jedno przypomnienie.';
+    wczytajLog();
+  }catch(e){
+    $('stanZapro').textContent = `Zaproszenia nie udało się zapisać (${e.message}), ale link możesz wysłać mimo to.`;
+  }
+}
+
+// Web Share API jest tylko na telefonie i tylko po HTTPS — poza tym chowamy przycisk
+if(navigator.share){
+  $('btnShare').hidden = false;
+  $('btnShare').addEventListener('click', async () => {
+    try{
+      await navigator.share({title: 'Bezpieczna Rodzina', text: TEKST_ZAPROSZENIA(imieDoZaproszenia())});
+      await zarejestrujZaproszenie('share');
+    }catch(e){ /* użytkownik zamknął okno udostępniania */ }
+  });
+}
+
+$('btnWhatsapp').addEventListener('click', async () => {
+  await zarejestrujZaproszenie('whatsapp');
+  open(`https://wa.me/?text=${encodeURIComponent(TEKST_ZAPROSZENIA(imieDoZaproszenia()))}`, '_blank', 'noopener');
+});
+
+$('btnMessenger').addEventListener('click', async () => {
+  await zarejestrujZaproszenie('messenger');
+  open(`https://www.facebook.com/dialog/send?link=${encodeURIComponent(location.origin + '/mapa')}&app_id=0&redirect_uri=${encodeURIComponent(location.origin)}`, '_blank', 'noopener');
+});
+
+$('btnKopiujZapro').addEventListener('click', async () => {
+  await zarejestrujZaproszenie('link');
+  try{
+    await navigator.clipboard.writeText(TEKST_ZAPROSZENIA(imieDoZaproszenia()));
+    $('btnKopiujZapro').textContent = 'Skopiowane';
+    setTimeout(() => { $('btnKopiujZapro').textContent = 'Skopiuj link'; }, 2000);
+  }catch(e){
+    $('stanZapro').textContent = 'Schowek zablokowany. Link: ' + location.origin + '/mapa';
+  }
+});
+
+async function wczytajLog(){
+  try{
+    const r = await fetch('/api/cron-raport?podglad=1', {cache:'no-store'});
+    const d = await r.json();
+    const p = d.przypomnienia;
+    if(!p){ $('logPrzypomnien').textContent = 'Brak danych o przypomnieniach.'; return; }
+    const naglowek = `Czeka na przypomnienie: ${p.czekalo} · wysłanych zaproszeń: ${p.podsumowanie.wyslane} · zaakceptowanych: ${p.podsumowanie.zaakceptowane}\nTryb: ${p.tryb} — ${p.uwaga}\n`;
+    const pozycje = p.przygotowane.length
+      ? p.przygotowane.map(x => `\n• ${x.imie}: ${x.tresc}`).join('')
+      : '\n(nic nie czeka — żadne zaproszenie nie przekroczyło 48 godzin bez akceptacji)';
+    const historia = p.log.length ? '\n\nHistoria:\n' + p.log.map(w => `${w.czas.slice(0,16).replace('T',' ')} — ${w.imie}`).join('\n') : '';
+    $('logPrzypomnien').textContent = naglowek + pozycje + historia;
+  }catch(e){
+    $('logPrzypomnien').textContent = `Nie udało się wczytać logu (${e.message}). Przypomnienia działają tylko z funkcjami serwerowymi.`;
+  }
+}
+wczytajLog();
+</script>
+<script type="module" src="/stopka.js"></script>
+</body>
+</html>

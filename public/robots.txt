@@ -1,0 +1,3 @@
+# Prototyp nie ma być indeksowany.
+User-agent: *
+Disallow: /

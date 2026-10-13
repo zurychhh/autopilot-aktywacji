@@ -1,0 +1,21 @@
+# Sekrety – nigdy w repozytorium
+.env
+.env.*
+!.env.example
+
+# Katalog roboczy Vercela (zawiera identyfikatory projektu)
+.vercel/
+
+# Artefakty testów przeglądarkowych
+test-results/
+playwright-report/
+
+# Zależności i artefakty
+node_modules/
+*.log
+
+# Materiały źródłowe spoza repozytorium
+*.pdf
+
+# macOS
+.DS_Store
